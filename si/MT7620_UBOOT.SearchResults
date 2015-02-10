@@ -1,0 +1,5 @@
+---- 115200 Matches (4 in 3 files) ----
+Rt2880.h (include\configs):#define CFG_BAUDRATE_TABLE	{ 9600, 19200, 38400, 57600, 115200 }
+Serial.c (board\rt2880):	59904,          // Baud rate 115200
+Uart.h (board\rt2880\include):#define UART_BAUD_115200	((uint32)((SYS_CLK_KHZ * 1000) / (16 * 115200)))
+Uart.h (board\rt2880\include):	B115200,
