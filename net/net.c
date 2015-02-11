@@ -76,17 +76,19 @@
 #include "rarp.h"
 //#include "nfs.h"
 /************************Add By Mleaf 2014-11-06***********************************/
-#include "netif/etharp.h"
+
 #include "lwip/dhcp.h"
 #include "lwip/mem.h"
 #include "lwip/memp.h"
 #include "lwip/init.h"
-#include "ethernetif.h" 
 #include "lwip/timers.h"
 #include "lwip/tcp_impl.h"
 #include "lwip/ip_frag.h"
 #include "lwip/tcpip.h" 
 #include "lwip/ip_addr.h" 
+#include "ethernetif.h" 
+#include "etharp.h"
+
 
 
 /************************Add By Mleaf 2014-11-06***********************************/
@@ -194,7 +196,7 @@ static rxhand_f *packetHandler;		/* Current RX packet handler		*/
 static thand_f *timeHandler;		/* Current timeout handler		*/
 static ulong	timeStart;		/* Time base value			*/
 static ulong	timeDelta;		/* Current timeout value		*/
-volatile uchar *NetTxPacket = 0;	/* THE transmit packet			*/
+
 
 static int net_check_prereq (proto_t protocol);
 
@@ -1777,6 +1779,8 @@ IPaddr_t getenv_IPaddr (char *var){
  * HTTP web server for web failsafe mode
  *
  ***************************************/
+
+
 u32 TCPTimer=0;			//TCP查询计时器
 u32 ARPTimer=0;			//ARP查询计时器
 u32 lwip_localtime;		//lwip本地时间计数器,单位:ms
@@ -1785,18 +1789,21 @@ struct netif lwip_netif; //定义一个全局的网络接口
 //LWIP轮询任务
 void lwip_periodic_handle()
 {
+	ulong start, now, last;
+	start = get_timer(0);
+
 #if LWIP_TCP
 	//每250ms调用一次tcp_tmr()函数
-  if (lwip_localtime - TCPTimer >= TCP_TMR_INTERVAL)
+  if ((now = get_timer(start)) >= TCP_TMR_INTERVAL)
   {
-	TCPTimer =	lwip_localtime;
+	
 	tcp_tmr();
   }
 #endif
+  last = get_timer(0);
   //ARP每5s周期性调用一次
-  if ((lwip_localtime - ARPTimer) >= ARP_TMR_INTERVAL)
+  if ((now = get_timer(start)) >= ARP_TMR_INTERVAL)
   {
-	ARPTimer =	lwip_localtime;
 	etharp_tmr();
   }
 
@@ -1820,27 +1827,62 @@ void lwip_periodic_handle()
   }  
 #endif
 }
+//当接收到数据后调用 
+void lwip_pkt_handle(void)
+{
+  //从网络缓冲区中读取接收到的数据包并将其发送给LWIP处理 
+ ethernetif_input(&lwip_netif);
+}
 
 int NetLoopHttpd(void){
-
+	struct ip_addr ipaddr;  			//ip地址
+	struct ip_addr netmask; 			//子网掩码
+	struct ip_addr gw;      			//默认网关 
 	struct netif *Netif_Init_Flag;		//调用netif_add()函数时的返回值,用于判断网络初始化是否成功								
-//	IP4_ADDR(&ipaddr, 192, 168, 1, 16);  	
-//	IP4_ADDR(&gw, 192, 168, 1, 1);		
-//	IP4_ADDR(&netmask, 255, 255, 255, 0);	
+	IP4_ADDR(&ipaddr, 192, 168, 1, 16);  	
+	IP4_ADDR(&gw, 192, 168, 1, 1);		
+	IP4_ADDR(&netmask, 255, 255, 255, 0);	
 	//init_lwip_timer();  //初始化lwip定时器
 	lwip_init();//初始化lwip						
-//	Netif_Init_Flag=netif_add(&lwip_netif,&ipaddr,&netmask,&gw,NULL,&ethernetif_init,&ethernet_input);//向网卡列表中添加一个网口
-	if(Netif_Init_Flag==NULL)return 3;//网卡添加失败 
+	Netif_Init_Flag=netif_add(&lwip_netif,&ipaddr,&netmask,&gw,NULL,&ethernetif_init,&ethernet_input);//向网卡列表中添加一个网口
+	if(Netif_Init_Flag==NULL)
+	{
+		printf("add network fail\n");
+		//return 3;//网卡添加失败 
+	}
 	else//网口添加成功后,设置netif为默认值,并且打开netif网口
 	{
 		netif_set_default(&lwip_netif); //设置netif为默认网口
 		netif_set_up(&lwip_netif);		//打开netif网口
+		printf("add network success\n");
 	}
-	return 0;//操作OK.
+	//return 0;//操作OK.
 
 while(1)
 	{
-		lwip_periodic_handle();
+		if(eth_rx()>0)
+		{
+			//lwip_pkt_handle();
+			lwip_periodic_handle();
+			printf("\nlwip_pkt_handle!\n\n");
+			printf("eth_rx=%d\n",eth_rx());
+
+		}
+		// if CTRL+C was pressed -> return!
+		if(ctrlc()){
+			eth_halt();
+			// reset global variables to default state
+			webfailsafe_is_running = 0;
+			webfailsafe_ready_for_upgrade = 0;
+			webfailsafe_upgrade_type = WEBFAILSAFE_UPGRADE_TYPE_FIRMWARE;
+
+			/* Invalidate the last protocol */
+			eth_set_last_protocol(BOOTP);
+
+			printf("\nWeb failsafe mode aborted!\n\n");
+			return(-1);
+		}
+		
 		
 	}
 	

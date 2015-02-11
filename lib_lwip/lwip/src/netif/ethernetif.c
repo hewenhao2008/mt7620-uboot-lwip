@@ -53,14 +53,15 @@
 #include "lwip/pbuf.h"
 #include <lwip/stats.h>
 #include <lwip/snmp.h>
-#include "netif/etharp.h"
-#include "netif/ppp_oe.h"
+#include "etharp.h"
+#include "ppp_oe.h"
+#include "ethernetif.h" 
+
 /*add by mleaf 20150210 for network*/
 #include <net.h>
+#include <asm/addrspace.h>
 
-/* Define those to better describe your network interface. */
-#define IFNAME0 'e'
-#define IFNAME1 'n'
+
 /*add by mleaf 20150210 for network*/
 uchar		NetOurEther[6];		/* Our ethernet address			*/
 volatile uchar *NetRxPackets[PKTBUFSRX]; /* Receive packets			*/
@@ -99,9 +100,6 @@ struct ethernetif {
   struct eth_addr *ethaddr;
   /* Add whatever per-interface state that is needed here. */
 };
-
-/* Forward declarations. */
-static void  ethernetif_input(struct netif *netif);
 
 /**
  * In this function, the hardware should be initialized.
@@ -334,7 +332,7 @@ low_level_input(struct netif *netif)
  *
  * @param netif the lwip network interface structure for this ethernetif
  */
-static void
+err_t
 ethernetif_input(struct netif *netif)
 {
 	err_t err;
